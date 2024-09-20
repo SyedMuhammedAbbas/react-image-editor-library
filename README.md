@@ -13,16 +13,53 @@ npm install --save react-image-editor-library
 ## Usage
 
 ```jsx
-import React, { Component } from 'react'
+import React, { useState } from 'react'
+import { EditImageModal } from '@syedabbas/react-image-editor-library'
+import '@syedabbas/react-image-editor-library/dist/index.css'
 
-import MyComponent from 'react-image-editor-library'
-import 'react-image-editor-library/dist/index.css'
+function App() {
+  const [imagePreviewFlag, setImagePreviewFlag] = useState(false)
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null)
 
-class Example extends Component {
-  render() {
-    return <MyComponent />
+  const handleChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setImagePreviewFlag(true)
+        setSelectedPreviewImage(reader.result)
+      }
+      reader.readAsDataURL(file)
+      e.target.value = null
+    }
   }
+
+  return (
+    <div>
+      <h1>Test Image Editor Modal</h1>
+      <input
+        type='file'
+        accept='.jpg,.jpeg,.png,.gif'
+        onChange={handleChange}
+      />
+      <EditImageModal
+        isOpen={imagePreviewFlag}
+        imageSrc={selectedPreviewImage}
+        onClose={() => {
+          setImagePreviewFlag(false)
+          setSelectedPreviewImage(null)
+        }}
+        onSave={(editedImage) => {
+          setImagePreviewFlag(false)
+          setSelectedPreviewImage(editedImage)
+        }}
+      />
+      {selectedPreviewImage && <img src={selectedPreviewImage} alt='Edited' />}
+    </div>
+  )
 }
+
+export default App
 ```
 
 ## License
