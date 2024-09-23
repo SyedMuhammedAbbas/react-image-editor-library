@@ -10,6 +10,9 @@ import RedoIcon from '@mui/icons-material/Redo'
 import CloseIcon from '@mui/icons-material/Close'
 import CheckIcon from '@mui/icons-material/Check'
 import { ColorGrid } from './components/ColorGrid'
+import TextFieldsIcon from '@mui/icons-material/TextFields'
+
+import html2canvas from 'html2canvas'
 
 const EditImageModal = ({
   isOpen,
@@ -53,6 +56,10 @@ const EditImageModal = ({
   const [eraserSize, setEraserSize] = useState(initialEraserSize)
   // const [colorMenuAnchor, setColorMenuAnchor] = useState(null)
   const [cropSize, setCropSize] = useState({ width: 200, height: 200 })
+
+  const [points, setPoints] = useState([])
+  const [isAddingText, setIsAddingText] = useState(false)
+  const imageContainerRef = useRef(null)
 
   useEffect(() => {
     if (isOpen && imageSrc) {
@@ -235,17 +242,58 @@ const EditImageModal = ({
     }
   }
 
+  const addTextPoint = (e) => {
+    if (!isAddingText || !imageContainerRef.current) return
+    const rect = imageContainerRef.current.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const text = prompt('Enter text for this point:')
+    if (text) {
+      setPoints([...points, { x, y, text }])
+      saveToHistory()
+    }
+  }
+
+  const renderTextPoints = () => {
+    return points.map((point, index) => (
+      <div
+        key={index}
+        style={{
+          position: 'absolute',
+          left: point.x,
+          top: point.y,
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(255, 255, 255, 0.7)',
+          border: '1px solid #000',
+          padding: '2px',
+          borderRadius: '3px',
+          pointerEvents: 'none',
+          fontSize: '12px'
+        }}
+      >
+        {point.text}
+      </div>
+    ))
+  }
+
+  const toggleTextMode = () => {
+    setIsAddingText(!isAddingText)
+    setMode(isAddingText ? null : 'text')
+  }
+
   const handleSave = () => {
-    if (canvasRef.current) {
-      canvasRef.current.toBlob((blob) => {
-        if (blob) {
-          const file = new File([blob], 'edited-image.png', {
-            type: 'image/png'
-          })
-          onSave(file)
-          onClose()
-        }
-      }, 'image/png')
+    if (imageContainerRef.current) {
+      html2canvas(imageContainerRef.current).then((canvas) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], 'edited-image.png', {
+              type: 'image/png'
+            })
+            onSave(file)
+            onClose()
+          }
+        }, 'image/png')
+      })
     }
   }
 
@@ -344,6 +392,14 @@ const EditImageModal = ({
             }}
           >
             <CropIcon />
+          </IconButton>
+          <IconButton
+            onClick={() => toggleTextMode()}
+            sx={{
+              backgroundColor: isAddingText ? 'lightgray' : 'transparent'
+            }}
+          >
+            <TextFieldsIcon />
           </IconButton>
           <IconButton
             onClick={() => toggleMode(mode === 'pen' ? null : 'pen')}
@@ -446,7 +502,11 @@ const EditImageModal = ({
             />
           </Box>
         ) : (
-          <Box sx={fixedBoxStyles}>
+          <Box
+            sx={fixedBoxStyles}
+            ref={imageContainerRef}
+            onClick={addTextPoint}
+          >
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
@@ -455,6 +515,7 @@ const EditImageModal = ({
               onMouseLeave={endDrawing}
               style={{ maxWidth: '100%', maxHeight: '70vh' }}
             />
+            {renderTextPoints()}
           </Box>
         )}
 

@@ -49,6 +49,7 @@
     "@mui/icons-material": "^5.0.0",
     "@mui/material": "^5.16.7",
     "cropperjs": "^1.6.2",
+    "html2canvas": "^1.4.1",
     "postcss-flexbugs-fixes": "^5.0.2",
     "postcss-preset-env": "^10.0.3",
     "react-easy-crop": "^4.0.0",
