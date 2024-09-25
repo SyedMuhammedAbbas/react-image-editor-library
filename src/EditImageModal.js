@@ -19,6 +19,13 @@ const EditImageModal = ({
   onClose,
   imageSrc,
   onSave,
+  modes = {
+    crop: true,
+    pen: true,
+    highlighter: true,
+    eraser: true,
+    text: true
+  },
   index = 0,
   modalStyle = {},
   canvasStyle = {},
@@ -59,6 +66,8 @@ const EditImageModal = ({
 
   const [points, setPoints] = useState([])
   const [isAddingText, setIsAddingText] = useState(false)
+  const [editingTextIndex, setEditingTextIndex] = useState(null)
+  const [currentText, setCurrentText] = useState('')
   const imageContainerRef = useRef(null)
 
   useEffect(() => {
@@ -70,6 +79,10 @@ const EditImageModal = ({
         initializeCanvas(image)
       }
       image.src = imageSrc
+
+      setPoints([])
+      setCurrentText('')
+      setEditingTextIndex(null)
     }
   }, [isOpen, imageSrc])
 
@@ -90,17 +103,17 @@ const EditImageModal = ({
   }
 
   const applyCrop = async () => {
-    if (!croppedAreaPixels || !editedImage) return
+    if (!croppedAreaPixels || !originalImage) return
 
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
-    const scaleX = editedImage.naturalWidth / editedImage.width
-    const scaleY = editedImage.naturalHeight / editedImage.height
+    const scaleX = originalImage.naturalWidth / originalImage.width
+    const scaleY = originalImage.naturalHeight / originalImage.height
     canvas.width = croppedAreaPixels.width
     canvas.height = croppedAreaPixels.height
 
     ctx.drawImage(
-      editedImage,
+      originalImage,
       croppedAreaPixels.x * scaleX,
       croppedAreaPixels.y * scaleY,
       croppedAreaPixels.width * scaleX,
@@ -111,22 +124,20 @@ const EditImageModal = ({
       croppedAreaPixels.height
     )
 
-    // Convert the canvas to an image and set it as the new edited image
     const croppedImage = new Image()
-    croppedImage.src = canvas.toDataURL() // Get the data URL from the canvas
+    croppedImage.src = canvas.toDataURL()
     croppedImage.onload = () => {
-      setEditedImage(croppedImage) // Update the edited image
+      setEditedImage(croppedImage)
       setIsCropping(false)
       setMode(null)
 
-      // Render the cropped image on the main canvas
       const mainCanvas = canvasRef.current
       const mainCtx = mainCanvas.getContext('2d')
       mainCanvas.width = croppedImage.width
       mainCanvas.height = croppedImage.height
       mainCtx.drawImage(croppedImage, 0, 0)
 
-      saveToHistory() // Save the cropped state to history
+      saveToHistory()
     }
   }
 
@@ -134,7 +145,6 @@ const EditImageModal = ({
     setIsCropping(false)
     setMode(null)
 
-    // Just reset the crop area, but keep the edited image
     if (editedImage) {
       setTimeout(() => {
         const canvas = canvasRef.current
@@ -203,24 +213,27 @@ const EditImageModal = ({
     if (context && canvasRef.current) {
       saveToHistory()
 
-      // Update the edited image after drawing
       const updatedImage = new Image()
-      updatedImage.src = canvasRef.current.toDataURL() // Convert canvas to data URL
-      setEditedImage(updatedImage) // Update the edited image
+      updatedImage.src = canvasRef.current.toDataURL()
+      setEditedImage(updatedImage)
     }
   }
 
   const saveToHistory = () => {
     if (context && canvasRef.current) {
-      const imageData = context.getImageData(
+      const canvasData = context.getImageData(
         0,
         0,
         canvasRef.current.width,
         canvasRef.current.height
       )
+      const state = {
+        canvasData,
+        points: [...points]
+      }
       setHistory((prevHistory) => [
         ...prevHistory.slice(0, historyIndex + 1),
-        imageData
+        state
       ])
       setHistoryIndex((prevIndex) => prevIndex + 1)
     }
@@ -228,30 +241,83 @@ const EditImageModal = ({
 
   const handleUndo = () => {
     if (historyIndex > 0 && context) {
-      setHistoryIndex((prevIndex) => prevIndex - 1)
-      const imageData = history[historyIndex - 1]
-      context.putImageData(imageData, 0, 0)
+      const prevIndex = historyIndex - 1
+      setHistoryIndex(prevIndex)
+      const { canvasData, points: savedPoints } = history[prevIndex]
+      context.putImageData(canvasData, 0, 0)
+      setPoints(savedPoints)
+
+      // Update editedImage
+      const updatedImage = new Image()
+      updatedImage.src = canvasRef.current.toDataURL()
+      setEditedImage(updatedImage)
     }
   }
 
   const handleRedo = () => {
     if (historyIndex < history.length - 1 && context) {
-      setHistoryIndex((prevIndex) => prevIndex + 1)
-      const imageData = history[historyIndex + 1]
-      context.putImageData(imageData, 0, 0)
+      const nextIndex = historyIndex + 1
+      setHistoryIndex(nextIndex)
+      const { canvasData, points: savedPoints } = history[nextIndex]
+      context.putImageData(canvasData, 0, 0)
+      setPoints(savedPoints)
+
+      const updatedImage = new Image()
+      updatedImage.src = canvasRef.current.toDataURL()
+      setEditedImage(updatedImage)
     }
   }
 
+  const [isEditing, setIsEditing] = useState(false)
+
   const addTextPoint = (e) => {
-    if (!isAddingText || !imageContainerRef.current) return
+    if (!isAddingText || isEditing || !imageContainerRef.current) return
+
     const rect = imageContainerRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
-    const text = prompt('Enter text for this point:')
-    if (text) {
-      setPoints([...points, { x, y, text }])
+
+    const clickedTextIndex = points.findIndex(
+      (point) => Math.abs(point.x - x) < 20 && Math.abs(point.y - y) < 20
+    )
+
+    if (clickedTextIndex !== -1) {
+      handleTextClick(clickedTextIndex)
+    } else {
+      setPoints([...points, { x, y, text: '' }])
+      setEditingTextIndex(points.length)
+      setIsEditing(true)
+    }
+  }
+
+  const handleTextChange = (e, index) => {
+    const newText = e.target.value
+    const updatedPoints = points.map((point, idx) =>
+      idx === index ? { ...point, text: newText } : point
+    )
+    setPoints(updatedPoints)
+  }
+
+  const finishEditingText = (index) => {
+    setIsEditing(false)
+    setEditingTextIndex(null)
+
+    if (points[index].text.trim() === '') {
+      deleteTextPoint(index)
+    } else {
       saveToHistory()
     }
+  }
+
+  const deleteTextPoint = (index) => {
+    const updatedPoints = points.filter((_, idx) => idx !== index)
+    setPoints(updatedPoints)
+    saveToHistory()
+  }
+
+  const handleTextClick = (index) => {
+    setEditingTextIndex(index) // Start editing mode for the clicked text
+    setIsEditing(true) // Prevent adding new text while editing
   }
 
   const renderTextPoints = () => {
@@ -267,11 +333,48 @@ const EditImageModal = ({
           border: '1px solid #000',
           padding: '2px',
           borderRadius: '3px',
-          pointerEvents: 'none',
-          fontSize: '12px'
+          pointerEvents: 'auto',
+          fontSize: '12px',
+          cursor: 'pointer'
+        }}
+        onClick={(e) => {
+          e.stopPropagation() // Prevent click event from triggering a new point
+          handleTextClick(index)
         }}
       >
-        {point.text}
+        {editingTextIndex === index ? (
+          <Fragment>
+            <input
+              type='text'
+              value={point.text}
+              onChange={(e) => handleTextChange(e, index)}
+              onBlur={() => finishEditingText(index)}
+              autoFocus
+              style={{
+                pointerEvents: 'auto',
+                background: 'rgba(255, 255, 255, 0.9)',
+                border: '1px solid black',
+                fontSize: '12px'
+              }}
+            />
+            <button
+              onClick={() => deleteTextPoint(index)}
+              style={{
+                marginLeft: '4px',
+                pointerEvents: 'auto',
+                background: 'red',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'white',
+                fontSize: '12px'
+              }}
+            >
+              Delete
+            </button>
+          </Fragment>
+        ) : (
+          <span>{point.text}</span>
+        )}
       </div>
     ))
   }
@@ -299,11 +402,10 @@ const EditImageModal = ({
 
   const toggleMode = (selectedMode) => {
     if (selectedMode === 'crop') {
-      setIsCropping((prev) => !prev) // Toggle cropping state
+      setIsCropping((prev) => !prev)
       setMode((prevMode) => (prevMode === selectedMode ? null : selectedMode))
 
       if (!isCropping && editedImage) {
-        // Ensure the edited image remains visible
         setTimeout(() => {
           const canvas = canvasRef.current
           if (canvas) {
@@ -321,7 +423,7 @@ const EditImageModal = ({
 
       setTimeout(() => {
         const canvas = canvasRef.current
-        if (canvas) {
+        if (canvas && editedImage) {
           canvas.width = editedImage.width
           canvas.height = editedImage.height
           const ctx = canvas.getContext('2d')
@@ -385,49 +487,59 @@ const EditImageModal = ({
         </IconButton>
 
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-          <IconButton
-            onClick={() => toggleMode(mode === 'crop' ? null : 'crop')}
-            sx={{
-              backgroundColor: mode === 'crop' ? 'lightgray' : 'transparent'
-            }}
-          >
-            <CropIcon />
-          </IconButton>
-          <IconButton
-            onClick={() => toggleTextMode()}
-            sx={{
-              backgroundColor: isAddingText ? 'lightgray' : 'transparent'
-            }}
-          >
-            <TextFieldsIcon />
-          </IconButton>
-          <IconButton
-            onClick={() => toggleMode(mode === 'pen' ? null : 'pen')}
-            sx={{
-              backgroundColor: mode === 'pen' ? 'lightgray' : 'transparent'
-            }}
-          >
-            <CreateIcon />
-          </IconButton>
-          <IconButton
-            onClick={() =>
-              toggleMode(mode === 'highlighter' ? null : 'highlighter')
-            }
-            sx={{
-              backgroundColor:
-                mode === 'highlighter' ? 'lightgray' : 'transparent'
-            }}
-          >
-            <BrushIcon />
-          </IconButton>
-          <IconButton
-            onClick={() => toggleMode(mode === 'eraser' ? null : 'eraser')}
-            sx={{
-              backgroundColor: mode === 'eraser' ? 'lightgray' : 'transparent'
-            }}
-          >
-            <FormatColorFillIcon />
-          </IconButton>
+          {modes.crop && (
+            <IconButton
+              onClick={() => toggleMode(mode === 'crop' ? null : 'crop')}
+              sx={{
+                backgroundColor: mode === 'crop' ? 'lightgray' : 'transparent'
+              }}
+            >
+              <CropIcon />
+            </IconButton>
+          )}
+          {modes.text && (
+            <IconButton
+              onClick={() => toggleTextMode()}
+              sx={{
+                backgroundColor: isAddingText ? 'lightgray' : 'transparent'
+              }}
+            >
+              <TextFieldsIcon />
+            </IconButton>
+          )}
+          {modes.pen && (
+            <IconButton
+              onClick={() => toggleMode(mode === 'pen' ? null : 'pen')}
+              sx={{
+                backgroundColor: mode === 'pen' ? 'lightgray' : 'transparent'
+              }}
+            >
+              <CreateIcon />
+            </IconButton>
+          )}
+          {modes.highlighter && (
+            <IconButton
+              onClick={() =>
+                toggleMode(mode === 'highlighter' ? null : 'highlighter')
+              }
+              sx={{
+                backgroundColor:
+                  mode === 'highlighter' ? 'lightgray' : 'transparent'
+              }}
+            >
+              <BrushIcon />
+            </IconButton>
+          )}
+          {modes.eraser && (
+            <IconButton
+              onClick={() => toggleMode(mode === 'eraser' ? null : 'eraser')}
+              sx={{
+                backgroundColor: mode === 'eraser' ? 'lightgray' : 'transparent'
+              }}
+            >
+              <FormatColorFillIcon />
+            </IconButton>
+          )}
           <IconButton
             onClick={() => setShowColorGrid(!showColorGrid)}
             disabled={!['pen', 'highlighter'].includes(mode)}
