@@ -9,6 +9,9 @@ import UndoIcon from '@mui/icons-material/Undo'
 import RedoIcon from '@mui/icons-material/Redo'
 import CloseIcon from '@mui/icons-material/Close'
 import CheckIcon from '@mui/icons-material/Check'
+import DeleteIcon from '@mui/icons-material/Delete'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
+
 import { ColorGrid } from './components/ColorGrid'
 import TextFieldsIcon from '@mui/icons-material/TextFields'
 
@@ -68,6 +71,10 @@ const EditImageModal = ({
   const [isAddingText, setIsAddingText] = useState(false)
   const [editingTextIndex, setEditingTextIndex] = useState(null)
   const [currentText, setCurrentText] = useState('')
+  const [isSaving, setIsSaving] = useState(true)
+  const [isDownloading, setIsDownloading] = useState(true)
+  const [downloadStatus, setDownloadStatus] = useState('idle')
+
   const imageContainerRef = useRef(null)
 
   useEffect(() => {
@@ -316,11 +323,14 @@ const EditImageModal = ({
   }
 
   const handleTextClick = (index) => {
-    setEditingTextIndex(index) // Start editing mode for the clicked text
-    setIsEditing(true) // Prevent adding new text while editing
+    setEditingTextIndex(index)
+    setIsEditing(true)
   }
 
   const renderTextPoints = () => {
+    const maxWidth = 200
+    const maxHeight = 200
+
     return points.map((point, index) => (
       <div
         key={index}
@@ -328,23 +338,49 @@ const EditImageModal = ({
           position: 'absolute',
           left: point.x,
           top: point.y,
+          maxWidth: `${maxWidth}px`,
+          maxHeight: `${maxHeight}px`,
+          overflow: 'visible',
           transform: 'translate(-50%, -50%)',
-          background: 'rgba(255, 255, 255, 0.7)',
-          border: '1px solid #000',
-          padding: '2px',
-          borderRadius: '3px',
+          background: 'rgba(102, 51, 255, 1)',
+          color: '#fff',
+          border: 'none',
+          padding: '8px 12px',
+          borderRadius: '8px',
           pointerEvents: 'auto',
-          fontSize: '12px',
-          cursor: 'pointer'
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'flex-start',
+          alignItems: 'center',
+          boxShadow: '0px 2px 10px rgba(0, 0, 0, 0.2)',
+          wordWrap: 'break-word',
+          whiteSpace: 'normal',
+          wordBreak: 'break-word',
+          zIndex: 9999
+          // position: "relative", // For positioning the arrow
         }}
         onClick={(e) => {
-          e.stopPropagation() // Prevent click event from triggering a new point
+          e.stopPropagation()
           handleTextClick(index)
         }}
       >
+        {/* Tooltip Arrow */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '-8px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 0,
+            height: 0,
+            borderLeft: '8px solid transparent',
+            borderRight: '8px solid transparent',
+            borderBottom: '8px solid rgba(102, 51, 255, 0.9)'
+          }}
+        />
         {editingTextIndex === index ? (
           <Fragment>
-            <input
+            <textarea
               type='text'
               value={point.text}
               onChange={(e) => handleTextChange(e, index)}
@@ -352,28 +388,32 @@ const EditImageModal = ({
               autoFocus
               style={{
                 pointerEvents: 'auto',
-                background: 'rgba(255, 255, 255, 0.9)',
-                border: '1px solid black',
-                fontSize: '12px'
+                background: 'rgba(255, 255, 255, 0.3)',
+                border: '1px solid #ccc',
+                borderRadius: '8px',
+                padding: '4px 8px',
+                fontSize: '14px',
+                outline: 'none',
+                color: '#fff'
               }}
             />
-            <button
-              onClick={() => deleteTextPoint(index)}
-              style={{
-                marginLeft: '4px',
-                pointerEvents: 'auto',
-                background: 'red',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'white',
-                fontSize: '12px'
-              }}
-            >
-              Delete
-            </button>
+
+            <IconButton onClick={() => deleteTextPoint(index)}>
+              <DeleteIcon fontSize='sm' />
+            </IconButton>
+            <IconButton onClick={() => finishEditingText(index)}>
+              <CheckIcon fontSize='sm' />
+            </IconButton>
           </Fragment>
         ) : (
-          <span>{point.text}</span>
+          <span>
+            {point.text}{' '}
+            {(isSaving || downloadStatus === 'in_progress') && (
+              <IconButton onClick={() => deleteTextPoint(index)}>
+                <CloseIcon fontSize='sm' />
+              </IconButton>
+            )}
+          </span>
         )}
       </div>
     ))
@@ -386,6 +426,10 @@ const EditImageModal = ({
 
   const handleSave = () => {
     if (imageContainerRef.current) {
+      setIsSaving(true)
+      setIsDownloading(true)
+      setDownloadStatus('in_progress')
+
       html2canvas(imageContainerRef.current).then((canvas) => {
         canvas.toBlob((blob) => {
           if (blob) {
@@ -398,6 +442,31 @@ const EditImageModal = ({
         }, 'image/png')
       })
     }
+
+    onClose()
+  }
+
+  const handleDownloadImage = () => {
+    if (imageContainerRef.current) {
+      setIsSaving(true)
+      setIsDownloading(true)
+      setDownloadStatus('in_progress')
+
+      html2canvas(imageContainerRef.current).then((canvas) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = 'edited-image.png'
+            link.click()
+            window.URL.revokeObjectURL(url)
+          }
+        }, 'image/png')
+      })
+    }
+
+    onClose()
   }
 
   const toggleMode = (selectedMode) => {
@@ -443,9 +512,9 @@ const EditImageModal = ({
     setShowColorGrid(false)
   }
 
-  const handleAspectRatioChange = (event, newValue) => {
-    setAspectRatio(newValue)
-  }
+  // const handleAspectRatioChange = (event, newValue) => {
+  //   setAspectRatio(newValue);
+  // };
 
   const fixedBoxStyles = {
     position: 'relative',
@@ -617,7 +686,12 @@ const EditImageModal = ({
           <Box
             sx={fixedBoxStyles}
             ref={imageContainerRef}
-            onClick={addTextPoint}
+            style={{
+              position: 'relative',
+              overflow: 'visible',
+              width: '650px',
+              height: '650px'
+            }}
           >
             <canvas
               ref={canvasRef}
@@ -625,7 +699,8 @@ const EditImageModal = ({
               onMouseMove={draw}
               onMouseUp={endDrawing}
               onMouseLeave={endDrawing}
-              style={{ maxWidth: '100%', maxHeight: '70vh' }}
+              onClick={addTextPoint}
+              style={{ maxWidth: '500px', maxHeight: '500px' }}
             />
             {renderTextPoints()}
           </Box>
@@ -708,19 +783,32 @@ const EditImageModal = ({
               </Fragment>
             )}
           </div>
-          <Button
-            variant='contained'
+
+          <div
             style={{
-              backgroundColor: '#4BB543',
-              borderRadius: 10,
-              padding: '5px 7px',
-              ...buttonStyle
+              display: 'flex',
+              gap: 3,
+              justifyContent: 'flex-end',
+              alignItems: 'center'
             }}
-            disabled={isCropping}
-            onClick={handleSave}
           >
-            Done
-          </Button>
+            <IconButton onClick={() => handleDownloadImage()}>
+              <FileDownloadIcon fontSize='sm' />
+            </IconButton>
+            <Button
+              variant='contained'
+              style={{
+                backgroundColor: '#4BB543',
+                borderRadius: 10,
+                padding: '5px 7px',
+                ...buttonStyle
+              }}
+              disabled={isCropping}
+              onClick={handleSave}
+            >
+              Done
+            </Button>
+          </div>
         </Box>
       </Box>
     </Modal>
