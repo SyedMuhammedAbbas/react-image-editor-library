@@ -327,6 +327,30 @@ const EditImageModal = ({
     setIsEditing(true)
   }
 
+  function handleDragStart(e, index) {
+    e.dataTransfer.setData('text/plain', index.toString())
+  }
+
+  function handleDragEnter(e) {
+    e.preventDefault()
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+  }
+
+  function handleDrop(e, index) {
+    e.preventDefault()
+    const draggedIndex = parseInt(e.dataTransfer.getData('text'))
+    if (draggedIndex !== index) {
+      const temp = points[index]
+      points[index] = points[draggedIndex]
+      points[draggedIndex] = temp
+      setPoints(points)
+      saveToHistory()
+    }
+  }
+
   const renderTextPoints = () => {
     const maxWidth = 200
     const maxHeight = 200
@@ -334,10 +358,11 @@ const EditImageModal = ({
     return points.map((point, index) => (
       <div
         key={index}
+        id={`text-point-${index}`}
         style={{
           position: 'absolute',
           left: point.x,
-          top: point.y,
+          top: point.y + 48,
           maxWidth: `${maxWidth}px`,
           maxHeight: `${maxHeight}px`,
           overflow: 'visible',
@@ -348,7 +373,7 @@ const EditImageModal = ({
           padding: '8px 12px',
           borderRadius: '8px',
           pointerEvents: 'auto',
-          cursor: 'pointer',
+          cursor: 'move',
           display: 'flex',
           justifyContent: 'flex-start',
           alignItems: 'center',
@@ -357,12 +382,12 @@ const EditImageModal = ({
           whiteSpace: 'normal',
           wordBreak: 'break-word',
           zIndex: 9999
-          // position: "relative", // For positioning the arrow
         }}
-        onClick={(e) => {
-          e.stopPropagation()
-          handleTextClick(index)
-        }}
+        draggable='true'
+        onDragStart={(e) => handleDragStart(e, index)}
+        onDragEnter={(e) => handleDragEnter(e)}
+        onDragOver={(e) => handleDragOver(e)}
+        onDrop={(e) => handleDrop(e, index)}
       >
         {/* Tooltip Arrow */}
         <div
